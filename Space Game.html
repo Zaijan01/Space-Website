@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Space Game - PowerUps Fully Added</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
+
+body {
+    margin:0;
+    background:black;
+    color:#0ff;
+    font-family:'Orbitron', sans-serif;
+    text-align:center;
+    overflow:hidden;
+}
+
+canvas {
+    display:block;
+    margin:0 auto;
+    background:black;
+    border:2px solid #0ff;
+}
+
+button {
+    padding:10px 20px;
+    margin:5px;
+    font-size:16px;
+    cursor:pointer;
+    background:#0ff;
+    color:black;
+    border:none;
+    border-radius:5px;
+    box-shadow:0 0 10px #0ff;
+    transition:0.2s;
+}
+
+button:hover {
+    box-shadow:0 0 20px #0ff;
+    transform:scale(1.05);
+}
+
+#homeScreen, #gameScreen { 
+    display:none; 
+    padding-bottom:60px; 
+}
+
+.upgrade { text-align:left; margin:5px; }
+
+#gameControls { text-align:center; margin-top:10px; }
+
+#scoreBoard, #timerBoard { display:inline-block; margin:10px 20px; font-size:18px; }
+
+.effect { color:#0f0; font-size:14px; }
+
+#backLobbyBtn {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 20px;
+    background:#f0f;
+    color:black;
+    font-size:18px;
+    font-weight:bold;
+    border:none;
+    cursor:pointer;
+    border-radius:5px;
+    box-shadow:0 0 10px #f0f;
+    transition:0.2s;
+    z-index:1000;
+}
+#backLobbyBtn:hover {
+    box-shadow:0 0 20px #f0f;
+    transform: translateX(-50%) scale(1.05);
+}
+</style>
+</head>
+<body>
+<h1>🌌 Space Game 🌌</h1>
+
+<!-- Home Screen -->
+<div id="homeScreen">
+    <h2>Home Screen</h2>
+    <p>Coins: <span id="coinsDisplay">0</span></p>
+
+    <div class="upgrade">
+        <p>Attack Speed - Cost: <span id="attackCost">75</span></p>
+        <p class="effect">Level: <span id="attackLevel">0</span></p>
+        <button onclick="upgrade('attack')">Upgrade</button>
+    </div>
+
+    <div class="upgrade">
+        <p>Multi-Shooting - Cost: <span id="multiCost">1200</span> (Max: 5)</p>
+        <p class="effect">Level: <span id="multiLevel">0</span></p>
+        <button onclick="upgrade('multi')">Upgrade</button>
+    </div>
+
+    <div class="upgrade">
+        <p>Power-Up Duration - Cost: <span id="powerCost">75</span></p>
+        <p class="effect">Level: <span id="powerLevel">0</span></p>
+        <button onclick="upgrade('power')">Upgrade</button>
+    </div>
+
+    <div class="upgrade">
+        <p>+5 Seconds - Cost: <span id="timeCost">75</span></p>
+        <p class="effect">Level: <span id="timeLevel">0</span></p>
+        <button onclick="upgrade('time')">Upgrade</button>
+    </div>
+
+    <div class="upgrade">
+        <p>Coin Multiplier - Cost: <span id="coinCost">75</span></p>
+        <p class="effect">Level: <span id="coinLevel">0</span></p>
+        <button onclick="upgrade('coin')">Upgrade</button>
+    </div>
+
+    <button onclick="startGameFromHome()">Start Game</button>
+</div>
+
+<!-- Game Screen -->
+<div id="gameScreen">
+    <div id="scoreBoard">Score: 0</div>
+    <div id="timerBoard">Time: 02:00</div>
+    <canvas id="gameCanvas" width="600" height="800"></canvas>
+    <div id="gameControls">
+        <button id="playAgainBtn" onclick="startGame()" style="display:none;">Play Again</button>
+        <button id="returnHomeBtn" onclick="showHome()" style="display:none;">Return to Home</button>
+    </div>
+    <div id="leaderboard">
+        <h3>Leaderboard</h3>
+        <ol id="leaderboardList"></ol>
+    </div>
+</div>
+
+<button id="backLobbyBtn" onclick="returnToLobby()">Back to Space Lobby</button>
+
+<script>
+/* ============================================================
+      GAME VARIABLES
+============================================================ */
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let spaceship, bullets, asteroids, powerUps, score, gameOver;
+let asteroidInterval, spawnRate=1500;
+let stars = [];
+let timer=120, timerInterval;
+let lastShotTime=0;
+let coins = parseInt(localStorage.getItem("coins")||0);
+
+let upgrades = {
+    attack:{level:0,cost:10},
+    multi:{level:0,cost:120,max:5},
+    power:{level:0,cost:15},
+    time:{level:0,cost:15},
+    coin:{level:0,cost:20},
+};
+
+let targetPos = {x:300, y:700};
+
+/* ============================================================
+      TEMP POWER-UP STATE
+============================================================ */
+let tempCooldownReduction = 0;     // Attack Speed Power-Up: -250ms
+let tempDamage = 0;                // Damage +3
+let powerUpDuration = 5000;        // 5 seconds
+let powerUpTimers = [];
+
+/* ============================================================
+      HOME SCREEN
+============================================================ */
+function showHome(){
+    document.getElementById("homeScreen").style.display="block";
+    document.getElementById("gameScreen").style.display="none";
+    document.getElementById("coinsDisplay").textContent=coins;
+    document.getElementById("backLobbyBtn").style.display="inline-block";
+    updateUpgrades();
+}
+
+function spendCoins(cost){
+    if(coins>=cost){
+        coins -= cost;
+        localStorage.setItem("coins",coins);
+        document.getElementById("coinsDisplay").textContent=coins;
+        return true;
+    }
+    return false;
+}
+
+function upgrade(type){
+    let u = upgrades[type];
+    if(type=="multi" && u.level>=u.max) return;
+
+    if(spendCoins(u.cost)){
+        u.level++;
+        u.cost = Math.floor(u.cost*1.5);
+        updateUpgrades();
+    }
+}
+
+function updateUpgrades(){
+    for(let key in upgrades){
+        document.getElementById(key+"Cost").textContent=upgrades[key].cost;
+        document.getElementById(key+"Level").textContent=upgrades[key].level;
+    }
+}
+
+function startGameFromHome(){
+    document.getElementById("homeScreen").style.display="none";
+    document.getElementById("gameScreen").style.display="block";
+    document.getElementById("backLobbyBtn").style.display="none";
+    startGame();
+}
+
+function returnToLobby(){ window.location.href="index.html"; }
+
+/* ============================================================
+      START GAME
+============================================================ */
+function startGame(){
+    spaceship = {x:canvas.width/2, y:canvas.height-80, size:30, speed:0.2, hp:1};
+    bullets = [];
+    asteroids = [];
+    powerUps = [];
+    score = 0;
+    gameOver = false;
+
+    // Reset power-ups
+    tempCooldownReduction = 0;
+    tempDamage = 0;
+    powerUpTimers.forEach(t => clearTimeout(t.timer));
+    powerUpTimers = [];
+
+    lastShotTime = 0;
+    shootCooldown = 500 - upgrades.attack.level * 50;
+    timer = 120 + upgrades.time.level * 5;
+
+    if(asteroidInterval) clearInterval(asteroidInterval);
+    asteroidInterval = setInterval(()=>{
+        createAsteroid();
+        if(Math.random()<0.08) createPowerUp();
+    }, spawnRate);
+
+    if(timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(()=>{
+        timer--;
+        let m = Math.floor(timer/60).toString().padStart(2,"0");
+        let s = (timer%60).toString().padStart(2,"0");
+        document.getElementById("timerBoard").textContent = `Time: ${m}:${s}`;
+
+        if(timer<=0) endGame();
+    },1000);
+
+    stars=[];
+    for(let i=0;i<100;i++){
+        stars.push({x:Math.random()*canvas.width, y:Math.random()*canvas.height, size:Math.random()*2+1, speed:Math.random()*0.5+0.2});
+    }
+
+    document.getElementById("playAgainBtn").style.display="none";
+    document.getElementById("returnHomeBtn").style.display="none";
+
+    requestAnimationFrame(gameLoop);
+}
+
+/* ============================================================
+      INPUT
+============================================================ */
+canvas.addEventListener("mousemove", e=>{
+    const r = canvas.getBoundingClientRect();
+    targetPos.x = e.clientX - r.left;
+    targetPos.y = e.clientY - r.top;
+});
+canvas.addEventListener("touchmove", e=>{
+    const r = canvas.getBoundingClientRect();
+    targetPos.x = e.touches[0].clientX - r.left;
+    targetPos.y = e.touches[0].clientY - r.top;
+    e.preventDefault();
+},{passive:false});
+
+/* ============================================================
+      LEADERBOARD
+============================================================ */
+function loadLeaderboard(){
+    const lb = JSON.parse(localStorage.getItem("spaceLeaderboard")||"[]");
+    const list = document.getElementById("leaderboardList");
+    list.innerHTML="";
+    lb.forEach(v=>{
+        const li=document.createElement("li");
+        li.textContent=v;
+        list.appendChild(li);
+    });
+}
+loadLeaderboard();
+
+/* ============================================================
+      CREATE OBJECTS
+============================================================ */
+function createAsteroid(){
+    asteroids.push({
+        x:Math.random()*(canvas.width-40)+20,
+        y:-40,
+        size:30+Math.random()*20,
+        speed:2+Math.random()*2,
+        hp:3
+    });
+}
+
+// 3 TYPES: time, attackSpeed (-250ms), damage (+3)
+function createPowerUp(){
+    const types=["time","attackSpeed","damage"];
+    powerUps.push({
+        x:Math.random()*(canvas.width-30),
+        y:-30,
+        size:20,
+        type:types[Math.floor(Math.random()*types.length)],
+        speed:2
+    });
+}
+
+/* ============================================================
+      POWER-UP TIMER HANDLING
+============================================================ */
+function startPowerUpTimer(type, amount){
+    // Remove old timer for same type
+    powerUpTimers = powerUpTimers.filter(t=>{
+        if(t.type===type){
+            clearTimeout(t.timer);
+            return false;
+        }
+        return true;
+    });
+
+    let t = setTimeout(()=>{
+        if(type==="attackSpeed") tempCooldownReduction -= amount;
+        if(type==="damage") tempDamage -= amount;
+    }, powerUpDuration);
+
+    powerUpTimers.push({type,timer:t});
+}
+
+/* ============================================================
+      GAME LOOP
+============================================================ */
+function gameLoop(){
+    if(gameOver) return;
+
+    ctx.fillStyle="black";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Stars
+    ctx.fillStyle="white";
+    for(let s of stars){
+        s.y+=s.speed;
+        if(s.y>canvas.height) s.y=0;
+        ctx.fillRect(s.x,s.y,s.size,s.size);
+    }
+
+    spaceship.x = targetPos.x;
+    spaceship.y = targetPos.y;
+
+    /* ------------------------------------------------------------
+          SHOOTING (uses new cooldown system)
+    ------------------------------------------------------------ */
+    shootCooldown = (500 - upgrades.attack.level*50) - tempCooldownReduction;
+    if(shootCooldown < 80) shootCooldown = 80; // Hard cap for stability
+
+    if(Date.now()-lastShotTime > shootCooldown){
+        let shots = 1 + upgrades.multi.level;
+        let spread = Math.PI/6;
+
+        for(let i=0;i<shots;i++){
+            let ang = 0;
+            if(shots>1)
+               ang = -spread/2 + (i/(shots-1))*spread;
+
+            let spd = 7 + upgrades.attack.level;
+
+            bullets.push({
+                x:spaceship.x,
+                y:spaceship.y - spaceship.size/2,
+                dx:Math.sin(ang)*spd,
+                dy:-Math.cos(ang)*spd,
+                size:5,
+                damage:1 + tempDamage
+            });
+        }
+
+        lastShotTime = Date.now();
+    }
+
+    /* ------------------------------------------------------------
+          BULLETS
+    ------------------------------------------------------------ */
+    ctx.fillStyle="cyan";
+    for(let i=bullets.length-1;i>=0;i--){
+        let b=bullets[i];
+        b.x+=b.dx;
+        b.y+=b.dy;
+
+        ctx.fillRect(b.x-b.size/2,b.y-b.size/2,b.size,b.size);
+
+        if(b.x<0 || b.x>canvas.width || b.y<0) bullets.splice(i,1);
+    }
+
+    /* ------------------------------------------------------------
+          ASTEROIDS
+    ------------------------------------------------------------ */
+    for(let i=asteroids.length-1;i>=0;i--){
+        let a=asteroids[i];
+        a.y+=a.speed;
+
+        ctx.fillStyle="red";
+        ctx.beginPath();
+        ctx.arc(a.x,a.y,a.size/2,0,Math.PI*2);
+        ctx.fill();
+
+        // HP bar
+        ctx.fillStyle="black";
+        ctx.fillRect(a.x-a.size/2,a.y-a.size/2-10,a.size,5);
+        ctx.fillStyle="lime";
+        ctx.fillRect(a.x-a.size/2,a.y-a.size/2-10,(a.hp/3)*a.size,5);
+
+        // Ship collision
+        let dx=a.x-spaceship.x, dy=a.y-spaceship.y;
+        if(Math.sqrt(dx*dx+dy*dy)<a.size/2+spaceship.size/2){
+            spaceship.hp--;
+            asteroids.splice(i,1);
+            if(spaceship.hp<=0) endGame();
+            continue;
+        }
+
+        // Bullet collision
+        for(let j=bullets.length-1;j>=0;j--){
+            let b=bullets[j];
+            let dx=a.x-b.x, dy=a.y-b.y;
+            if(Math.sqrt(dx*dx+dy*dy)<a.size/2+b.size/2){
+                a.hp -= b.damage;
+                bullets.splice(j,1);
+                if(a.hp<=0){
+                    score++;
+                    coins += 1 + upgrades.coin.level;
+                    localStorage.setItem("coins",coins);
+                    asteroids.splice(i,1);
+                }
+                break;
+            }
+        }
+
+        if(a.y>canvas.height) asteroids.splice(i,1);
+    }
+
+    /* ------------------------------------------------------------
+          POWERUP PICKUP
+    ------------------------------------------------------------ */
+    for(let i=powerUps.length-1;i>=0;i--){
+        let p=powerUps[i];
+        p.y+=p.speed;
+
+        if(p.type=="time") ctx.fillStyle="yellow";
+        if(p.type=="attackSpeed") ctx.fillStyle="orange";
+        if(p.type=="damage") ctx.fillStyle="purple";
+
+        ctx.fillRect(p.x,p.y,p.size,p.size);
+
+        let dx=p.x-spaceship.x, dy=p.y-spaceship.y;
+        if(Math.sqrt(dx*dx+dy*dy)<p.size/2+spaceship.size/2){
+
+            if(p.type==="time") timer+=10;
+
+            if(p.type==="attackSpeed"){
+                tempCooldownReduction += 250;
+                startPowerUpTimer("attackSpeed",250);
+            }
+
+            if(p.type==="damage"){
+                tempDamage += 3;
+                startPowerUpTimer("damage",3);
+            }
+
+            powerUps.splice(i,1);
+        }
+
+        if(p.y>canvas.height) powerUps.splice(i,1);
+    }
+
+    /* ------------------------------------------------------------
+          DRAW SHIP
+    ------------------------------------------------------------ */
+    ctx.fillStyle="cyan";
+    ctx.beginPath();
+    ctx.arc(spaceship.x,spaceship.y,spaceship.size/2,0,Math.PI*2);
+    ctx.fill();
+
+    document.getElementById("scoreBoard").textContent="Score: "+score;
+
+    requestAnimationFrame(gameLoop);
+}
+
+/* ============================================================
+      END GAME
+============================================================ */
+function endGame(){
+    gameOver=true;
+    clearInterval(asteroidInterval);
+    clearInterval(timerInterval);
+
+    document.getElementById("backLobbyBtn").style.display="inline-block";
+
+    let lb = JSON.parse(localStorage.getItem("spaceLeaderboard")||"[]");
+    lb.push(score);
+    lb.sort((a,b)=>b-a);
+    if(lb.length>10) lb=lb.slice(0,10);
+    localStorage.setItem("spaceLeaderboard",JSON.stringify(lb));
+    loadLeaderboard();
+
+    document.getElementById("playAgainBtn").style.display="inline-block";
+    document.getElementById("returnHomeBtn").style.display="inline-block";
+}
+
+showHome();
+</script>
+</body>
+</html>

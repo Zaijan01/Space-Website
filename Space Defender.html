@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Space Defender</title>
+
+<!-- ========== STYLES WITH HOVER EFFECTS ========== -->
+<style>
+body { 
+    margin:0; 
+    font-family:'Orbitron', sans-serif; 
+    background:black; 
+    color:#0ff; 
+    text-align:center; 
+}
+
+canvas { 
+    display:block; 
+    margin:0 auto; 
+    background:#000; 
+    border:2px solid #0ff; 
+    box-shadow:0 0 20px #0ff;
+    transition:0.3s;
+}
+canvas:hover {
+    box-shadow:0 0 40px #00ffff;
+}
+
+/* Screens */
+.screen { display:none; }
+
+/* BUTTONS */
+button { 
+    padding:10px 20px; 
+    margin:5px; 
+    font-size:16px; 
+    cursor:pointer; 
+    background:#0ff; 
+    color:black; 
+    border:none; 
+    border-radius:5px; 
+    transition:0.25s; 
+    box-shadow:0 0 15px #0ff;
+}
+button:hover { 
+    transform:scale(1.08);
+    box-shadow:0 0 35px #00eaff, 0 0 55px #00eaff inset;
+    background:#aaffff;
+}
+
+/* Back button glow */
+#backToLobby {
+    position: absolute; 
+    top: 10px; 
+    left: 10px;
+    padding: 10px 20px; 
+    background: #0ff; 
+    color: black; 
+    text-decoration: none;
+    font-family: 'Orbitron', sans-serif; 
+    font-weight: bold; 
+    border-radius: 5px; 
+    z-index: 1000;
+    box-shadow: 0 0 15px #0ff;
+    transition: 0.25s;
+}
+#backToLobby:hover {
+    transform: scale(1.08);
+    box-shadow:0 0 35px #00eaff, 0 0 55px #00eaff inset;
+}
+
+/* Upgrade + Shop cards */
+.upgrade, .shop-item { 
+    text-align:left; 
+    margin:8px; 
+    border:1px solid #0ff; 
+    padding:10px; 
+    border-radius:5px; 
+    transition:0.25s;
+    box-shadow:0 0 15px #00ffff22;
+}
+.upgrade:hover, .shop-item:hover {
+    transform:scale(1.03);
+    box-shadow:0 0 35px #00eaffaa;
+    background:#001f22;
+}
+
+/* Mobile controls */
+#mobileControls { display:none; margin-top:10px; }
+#mobileControls button { font-size:24px; padding:15px 25px; border-radius:8px; }
+</style>
+
+</head>
+<body>
+
+<h1>🛡 Space Defender 🛡</h1>
+
+<a href="index.html" id="backToLobby">⛵ Back to Space Lobby</a>
+
+<!-- HOME SCREEN -->
+<div id="homeScreen" class="screen">
+  <h2>Welcome, Defender!</h2>
+  <p>Coins: <span id="coinCount">0</span> | Gems: <span id="gemCount">0</span></p>
+  <button onclick="startGame()">Start Game</button>
+
+  <h3>Upgrades (Coins)</h3>
+  <div class="upgrade">
+    <p>Attack Speed (-ms): <span id="upgradeSpeed">800</span> | Cost: <span id="costSpeed">10</span> Coins</p>
+    <button onclick="buyUpgrade('speed')">Upgrade</button>
+  </div>
+  <div class="upgrade">
+    <p>Damage: <span id="upgradeDamage">1</span> | Cost: <span id="costDamage">10</span> Coins</p>
+    <button onclick="buyUpgrade('damage')">Upgrade</button>
+  </div>
+  <div class="upgrade">
+    <p>HP: <span id="upgradeHP">1</span> | Cost: <span id="costHP">10</span> Coins</p>
+    <button onclick="buyUpgrade('hp')">Upgrade</button>
+  </div>
+  <div class="upgrade">
+    <p>Coin Multiplier: +<span id="upgradeCoinMult">0</span> coins per kill | Cost: <span id="costCoinMult">20</span> Coins</p>
+    <button onclick="buyUpgrade('coin')">Upgrade</button>
+  </div>
+
+  <h3>Bow Shop (Gems)</h3>
+  <div class="shop-item">
+    <p>Fire Bow (burn) - 50 Gems</p>
+    <button onclick="buyBow('Fire')">Buy</button>
+  </div>
+  <div class="shop-item">
+    <p>Ice Bow (slow) - 50 Gems</p>
+    <button onclick="buyBow('Ice')">Buy</button>
+  </div>
+  <div class="shop-item">
+    <p>Wind Bow (faster bullets) - 50 Gems</p>
+    <button onclick="buyBow('Wind')">Buy</button>
+  </div>
+  <div class="shop-item">
+    <p>Earth Bow (extra HP) - 50 Gems</p>
+    <button onclick="buyBow('Earth')">Buy</button>
+  </div>
+
+  <h3>Leaderboard</h3>
+  <ol id="leaderboard"></ol>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="gameScreen" class="screen">
+  <canvas id="gameCanvas" width="1200" height="500"></canvas>
+  <div id="hud">
+    Score: <span id="score">0</span> | Wave: <span id="wave">1</span> | 
+    HP: <span id="playerHP">1</span> | 
+    Coins: <span id="coins">0</span> | Gems: <span id="gems">0</span> | Bow: <span id="currentBow">Basic</span>
+  </div>
+
+  <!-- Mobile controls -->
+  <div id="mobileControls">
+    <button id="btnUp">⬆ Up</button>
+    <button id="btnShoot">⚡ Shoot</button>
+    <button id="btnDown">⬇ Down</button>
+  </div>
+</div>
+
+<!-- GAME OVER SCREEN -->
+<div id="gameOverScreen" class="screen">
+  <h2>Game Over!</h2>
+  <p>Your Score: <span id="finalScore">0</span></p>
+  <button onclick="startGame()">Play Again</button>
+  <button onclick="returnHome()">Return to Home</button>
+</div>
+
+<!-- AUDIO -->
+<audio id="bgMusic" loop><source src="bgMusic.mp3" type="audio/mpeg"></audio>
+<audio id="shootSound"><source src="shoot.mp3" type="audio/mpeg"></audio>
+<audio id="killSound"><source src="kill.mp3" type="audio/mpeg"></audio>
+
+<script>
+/* ===============================
+       YOUR FULL ORIGINAL JS  
+   (NO CHANGES EXCEPT FORMATTING)
+   =============================== */
+
+let game = {
+  running:false,
+  score:0,
+  wave:1,
+  coins:0,
+  gems:0,
+  playerHP:1,
+  upgrades:{speed:800, damage:1, hp:1, coin:0},
+  upgradeCosts:{speed:10, damage:10, hp:10, coin:20},
+  bow:'Basic',
+  bullets:[],
+  enemies:[],
+  lastEnemyTime:0,
+  enemyInterval:2000,
+  leaderboard:JSON.parse(localStorage.getItem('leaderboard')||"[]")
+};
+
+let savedGame = JSON.parse(localStorage.getItem('advancedDefender'));
+if(savedGame){
+  game.coins = savedGame.coins || game.coins;
+  game.gems = savedGame.gems || game.gems;
+  game.upgrades = savedGame.upgrades || game.upgrades;
+  game.upgradeCosts = savedGame.upgradeCosts || game.upgradeCosts;
+  game.bow = savedGame.bow || game.bow;
+  game.score = savedGame.score || 0;
+  game.wave = savedGame.wave || 1;
+  game.playerHP = savedGame.playerHP || game.upgrades.hp;
+}
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const backButton = document.getElementById('backToLobby');
+const bgMusic = document.getElementById('bgMusic');
+const shootSound = document.getElementById('shootSound');
+const killSound = document.getElementById('killSound');
+
+let player = {x:50, y:canvas.height/2, width:20, height:60, lastShoot:0};
+
+function startGame(){
+  backButton.style.display='none';
+  showScreen('gameScreen');
+  game.running=true;
+  if(!game.score) game.score=0;
+  if(!game.wave) game.wave=1;
+  if(!game.playerHP) game.playerHP=game.upgrades.hp;
+  game.bullets=[]; game.enemies=[]; game.lastEnemyTime=0;
+  enemiesPerWave = 5; enemiesSpawned = 0;
+  bgMusic.play();
+  requestAnimationFrame(gameLoop);
+}
+
+function returnHome(){
+  backButton.style.display='block';
+  showScreen('homeScreen');
+  document.getElementById('coinCount').textContent = game.coins;
+  document.getElementById('gemCount').textContent = game.gems;
+  updateLeaderboard();
+  saveGame();
+  bgMusic.pause();
+}
+
+let isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+if(isMobile) document.getElementById('mobileControls').style.display='block';
+
+if(!isMobile){
+  window.addEventListener('mousemove', e => {
+    player.y = Math.max(0, Math.min(canvas.height - player.height, e.clientY - canvas.getBoundingClientRect().top - player.height/2));
+  });
+}else{
+  canvas.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    let touchY = e.touches[0].clientY - canvas.getBoundingClientRect().top;
+    player.y = Math.max(0, Math.min(canvas.height - player.height, touchY - player.height/2));
+  }, {passive:false});
+}
+
+/* ======================================
+          SAVE / LOAD FUNCTIONS
+   ====================================== */
+
+function saveGame(){
+  const saveData = {
+    coins: game.coins,
+    gems: game.gems,
+    upgrades: game.upgrades,
+    upgradeCosts: game.upgradeCosts,
+    bow: game.bow,
+    score: game.score,
+    wave: game.wave,
+    playerHP: game.playerHP
+  };
+  localStorage.setItem('advancedDefender', JSON.stringify(saveData));
+}
+
+function updateCoins(amount){
+  game.coins += amount;
+  document.getElementById('coinCount').textContent = game.coins;
+  saveGame();
+}
+
+function updateGems(amount){
+  game.gems += amount;
+  document.getElementById('gemCount').textContent = game.gems;
+  saveGame();
+}
+
+/* ======================================
+                UPGRADES
+   ====================================== */
+
+function buyUpgrade(type){
+  let cost=game.upgradeCosts[type];
+  if(game.coins>=cost){
+    game.coins-=cost;
+    if(type==='speed'){ game.upgrades.speed=Math.max(100, game.upgrades.speed-50); document.getElementById('upgradeSpeed').textContent=game.upgrades.speed; }
+    if(type==='damage'){ game.upgrades.damage+=1; document.getElementById('upgradeDamage').textContent=game.upgrades.damage; }
+    if(type==='hp'){ 
+        game.upgrades.hp+=1; document.getElementById('upgradeHP').textContent=game.upgrades.hp;
+        game.playerHP = game.upgrades.hp;
+    }
+    if(type==='coin'){ game.upgrades.coin+=1; document.getElementById('upgradeCoinMult').textContent=game.upgrades.coin; }
+    game.upgradeCosts[type] = Math.floor(game.upgradeCosts[type]*1.5);
+    updateUpgradeCosts();
+    document.getElementById('coinCount').textContent = game.coins;
+    saveGame();
+  } else alert("Not enough coins!");
+}
+
+function updateUpgradeCosts(){
+  document.getElementById('costSpeed').textContent = game.upgradeCosts.speed;
+  document.getElementById('costDamage').textContent = game.upgradeCosts.damage;
+  document.getElementById('costHP').textContent = game.upgradeCosts.hp;
+  document.getElementById('costCoinMult').textContent = game.upgradeCosts.coin;
+}
+
+/* ======================================
+                 BOW SHOP
+   ====================================== */
+
+function buyBow(name){
+  if(game.gems>=50){
+    game.gems-=50;
+    game.bow=name;
+    document.getElementById('currentBow').textContent=name;
+    document.getElementById('gemCount').textContent=game.gems;
+    saveGame();
+  } else alert("Not enough gems!");
+}
+
+/* ======================================
+               BULLETS / ENEMIES
+   ====================================== */
+
+function shootBullet(){
+  let now = Date.now();
+  if(now - player.lastShoot > game.upgrades.speed){
+    game.bullets.push(new Bullet(player.x+player.width, player.y+player.height/2));
+    player.lastShoot = now;
+    shootSound.play();
+  }
+}
+
+const btnShoot = document.getElementById('btnShoot');
+btnShoot.addEventListener('touchstart', e => { e.preventDefault(); shootBullet(); });
+
+class Bullet{
+  constructor(x,y){
+    this.x=x; this.y=y; this.radius=5; this.damage=game.upgrades.damage;
+    this.speed=10; if(game.bow==='Wind') this.speed*=1.5;
+  }
+  update(){ this.x+=this.speed; }
+  draw(){ ctx.fillStyle='#0ff'; ctx.beginPath(); ctx.arc(this.x,this.y,this.radius,0,Math.PI*2); ctx.fill(); }
+}
+
+class Enemy{
+  constructor(){
+    this.width=40; this.height=40;
+    this.x=canvas.width+100;
+    this.y=Math.random()*(canvas.height-this.height);
+    this.speed=0.5 + Math.random()*0.5 + game.wave*0.05;
+    this.hp=5; this.maxHp=5;
+    this.status={slowTime:0, burnTime:0};
+  }
+  update(){
+    let actualSpeed=this.speed;
+    if(this.status.slowTime>0){ actualSpeed*=0.5; this.status.slowTime--; }
+    this.x-=actualSpeed;
+    if(this.status.burnTime>0){ this.hp-=0.1; this.status.burnTime--; if(this.hp<0) this.hp=0; }
+  }
+  draw(){
+    ctx.fillStyle='red';
+    ctx.fillRect(this.x,this.y,this.width,this.height);
+    ctx.fillStyle='lime';
+    ctx.fillRect(this.x,this.y-5,this.width*(this.hp/this.maxHp),4);
+    if(this.status.burnTime>0){
+      ctx.fillStyle='orange';
+      ctx.fillRect(this.x,this.y-10,this.width*(this.status.burnTime/20),2);
+    }
+  }
+}
+
+/* ======================================
+            ENEMY SPAWNING
+   ====================================== */
+
+let enemiesPerWave=5, enemiesSpawned=0;
+function spawnEnemy(){ game.enemies.push(new Enemy()); enemiesSpawned++; }
+
+/* ======================================
+                MAIN LOOP
+   ====================================== */
+
+function gameLoop(timestamp){
+  if(!game.running) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(enemiesSpawned<enemiesPerWave && timestamp - game.lastEnemyTime > game.enemyInterval){
+    spawnEnemy(); game.lastEnemyTime=timestamp;
+  }
+
+  shootBullet();
+
+  for(let i=game.bullets.length-1;i>=0;i--){ let b=game.bullets[i]; b.update(); if(b.x>canvas.width) game.bullets.splice(i,1); }
+
+  for(let i=game.enemies.length-1;i>=0;i--){
+    let e=game.enemies[i]; e.update();
+    for(let j=game.bullets.length-1;j>=0;j--){
+      let b=game.bullets[j];
+      if(b.x>e.x && b.x<e.x+e.width && b.y>e.y && b.y<e.y+e.height){
+        e.hp-=b.damage;
+        if(game.bow==='Fire') e.status.burnTime=20;
+        if(game.bow==='Ice') e.status.slowTime=60;
+        if(game.bow==='Earth') game.playerHP=Math.min(game.upgrades.hp, game.playerHP+1);
+        game.bullets.splice(j,1);
+        if(e.hp<=0){ 
+            game.score+=10; 
+            game.enemies.splice(i,1); 
+            updateCoins(1 + game.upgrades.coin); 
+            killSound.play();
+            saveGame();
+        }
+        break;
+      }
+    }
+    if(e.x<player.x+player.width){ game.playerHP-=1; game.enemies.splice(i,1); if(game.playerHP<=0){ endGame(); return; } saveGame(); }
+  }
+
+  if(enemiesSpawned===enemiesPerWave && game.enemies.length===0){
+    game.wave++; enemiesPerWave+=2; enemiesSpawned=0; updateGems(1);
+    saveGame();
+  }
+
+  ctx.fillStyle='#0ff'; ctx.fillRect(player.x,player.y,player.width,player.height);
+  game.bullets.forEach(b=>b.draw());
+  game.enemies.forEach(e=>e.draw());
+
+  document.getElementById('score').textContent=game.score;
+  document.getElementById('wave').textContent=game.wave;
+  document.getElementById('playerHP').textContent=Math.floor(game.playerHP);
+  document.getElementById('coins').textContent=game.coins;
+  document.getElementById('gems').textContent=game.gems;
+  document.getElementById('currentBow').textContent=game.bow;
+
+  requestAnimationFrame(gameLoop);
+}
+
+function endGame(){
+  game.running=false;
+  showScreen('gameOverScreen');
+  document.getElementById('finalScore').textContent=game.score;
+  saveLeaderboard();
+  saveGame();
+  bgMusic.pause();
+}
+
+/* ======================================
+            LEADERBOARD
+   ====================================== */
+
+function saveLeaderboard(){
+  game.leaderboard.push(game.score);
+  game.leaderboard.sort((a,b)=>b-a);
+  if(game.leaderboard.length>10) game.leaderboard.length=10;
+  localStorage.setItem('leaderboard', JSON.stringify(game.leaderboard));
+}
+
+function updateLeaderboard(){
+  let list=document.getElementById('leaderboard'); list.innerHTML='';
+  game.leaderboard.forEach(s=>{ let li=document.createElement('li'); li.textContent=s; list.appendChild(li); });
+}
+
+/* ======================================
+              SCREEN HANDLING
+   ====================================== */
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.style.display='none');
+  document.getElementById(id).style.display='block';
+}
+
+/* INIT */
+showScreen('homeScreen');
+document.getElementById('coinCount').textContent=game.coins;
+document.getElementById('gemCount').textContent=game.gems;
+document.getElementById('currentBow').textContent=game.bow;
+updateLeaderboard();
+updateUpgradeCosts();
+
+</script>
+</body>
+</html>
